@@ -6,7 +6,7 @@
     'Friends':'Друзья','Settings':'Настройки','FAQ':'Вопросы и ответы','Menu':'Меню',
     'HOW TO PLAY':'КАК ИГРАТЬ','BEGIN DESCENT':'НАЧАТЬ ПОГРУЖЕНИЕ','DIVE':'НЫРНУТЬ',
     'DEPTH':'ГЛУБИНА','SCORE':'СЧЁТ','Your answer':'Твой ответ',
-    'type one answer…':'напиши один ответ…','Open menu':'Открыть меню','Close menu':'Закрыть меню',
+    'type one answer…':'напиши один ответ…','Send':'Отправить','Open menu':'Открыть меню','Close menu':'Закрыть меню',
     'Open settings':'Открыть настройки','Open wardrobe':'Открыть гардероб',
     'turn sound off':'Выключить звук','turn sound on':'Включить звук',
     'Next':'Далее','Continue':'Продолжить','Play again':'Сыграть ещё','Share':'Поделиться',

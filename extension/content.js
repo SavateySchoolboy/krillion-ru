@@ -36,8 +36,23 @@
     input.dispatchEvent(new Event('change',{bubbles:true}));
   }
   function bindInput(input) {
-    if (bindings.has(input) || input.hasAttribute('data-kr-ru-draft') || !input.form) return;
+    if (bindings.has(input) || input.hasAttribute('data-kr-ru-draft')) return;
     const form = input.form;
+    const findSendButton = () => {
+      if (form) {
+        const submitter = form.querySelector('button[type="submit"],input[type="submit"]');
+        if (submitter) return submitter;
+      }
+      const sendLabel = /(^|\b)(dive|send|submit|answer|guess|lock in|отправить|ответить|нырнуть|готово)(\b|$)/i;
+      let parent = input.parentElement;
+      for (let depth = 0; parent && parent !== document.body && depth < 6; depth++, parent = parent.parentElement) {
+        const button = Array.from(parent.querySelectorAll('button,[role="button"]'))
+          .find(el => sendLabel.test((el.getAttribute('aria-label') || el.textContent || '').trim()));
+        if (button) return button;
+      }
+      return null;
+    };
+    const sendButton = findSendButton();
     const clone = input.cloneNode(false);
     clone.removeAttribute('name'); clone.removeAttribute('id');
     clone.removeAttribute('value'); clone.removeAttribute('data-kr-ru-original');
@@ -86,11 +101,20 @@
         const revision = state.revision;
         await pending;
         if (!active || revision !== state.revision || !state.ready || !state.output || !input.isConnected || !clone.isConnected || clone.disabled) return;
-        // Let React commit the English value before its submit handler runs.
-        await new Promise(resolve => requestAnimationFrame(()=>requestAnimationFrame(resolve)));
-        if (revision !== state.revision || !input.isConnected || input.disabled || !form.isConnected) return;
+        // Let the site's controlled input commit English before replaying its submit action.
+        await new Promise(resolve => {
+          let done = false;
+          const finish = () => { if (!done) { done = true; resolve(); } };
+          requestAnimationFrame(() => requestAnimationFrame(finish));
+          setTimeout(finish, 80);
+        });
+        if (revision !== state.revision || !input.isConnected || input.disabled) return;
         sending = true;
-        try { form.requestSubmit(); } finally { sending = false; }
+        try {
+          if (form?.isConnected) form.requestSubmit();
+          else if (sendButton?.isConnected && !sendButton.disabled) sendButton.click();
+          else input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
+        } finally { sending = false; }
       }
     }
     const onKey = async event => {
@@ -99,14 +123,21 @@
       if (composing) return;
       const revision = state.revision;
       await pending;
-      if (!active || revision !== state.revision || !state.ready || !state.output || !form.isConnected || input.disabled) return;
-      form.requestSubmit();
+      if (!active || revision !== state.revision || !state.ready || !state.output || input.disabled) return;
+      sending = true;
+      try {
+        if (form?.isConnected) form.requestSubmit();
+        else if (sendButton?.isConnected && !sendButton.disabled) sendButton.click();
+        else input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
+      } finally { sending = false; }
     };
     clone.addEventListener('input',onInput);
     clone.addEventListener('compositionstart',onStart);
     clone.addEventListener('compositionend',onEnd);
     clone.addEventListener('keydown',onKey);
-    form.addEventListener('submit',submit,true);
+    form?.addEventListener('submit',submit,true);
+    // Some multiplayer controls use a button outside a native form.
+    sendButton?.addEventListener('click',submit,true);
     bindings.set(input,{
       clone,
       sync() {
@@ -121,7 +152,8 @@
       },
       dispose() {
         state.cancel();
-        form.removeEventListener('submit',submit,true);
+        form?.removeEventListener('submit',submit,true);
+        sendButton?.removeEventListener('click',submit,true);
         clone.remove(); input.removeAttribute('data-kr-ru-original');
       }
     });
@@ -168,7 +200,14 @@
       else binding.sync();
     }
     // Only the observed game-answer control. Login/password/search inputs are untouched.
-    document.querySelectorAll('form.ds-dock input.ds-input:not([data-kr-ru-draft]),input[aria-label="Your answer"]:not([data-kr-ru-draft])').forEach(bindInput);
+    document.querySelectorAll('input.ds-input:not([data-kr-ru-draft]),input[aria-label="Your answer"]:not([data-kr-ru-draft])').forEach(input => {
+      const label = `${input.getAttribute('aria-label') || ''} ${input.placeholder || ''}`.toLowerCase();
+      const isAnswer = /answer|guess|ответ|вариант/.test(label) ||
+        (input.classList.contains('ds-input') && input.maxLength > 32 && input.autocomplete !== 'nickname');
+      // Leave lobby name and room-code fields untouched; they are short and not answer controls.
+      const isLobbyField = input.autocomplete === 'nickname' || input.maxLength > 0 && input.maxLength <= 16 || /room code|код комнаты|kr[l]?p/i.test(label);
+      if (isAnswer && !isLobbyField) bindInput(input);
+    });
     const walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);
     let node; while((node=walker.nextNode())) translateNode(node);
     document.querySelectorAll('[placeholder],[aria-label],[title]').forEach(el=>{
@@ -184,8 +223,10 @@
     for(const node of originals.keys())if(!node.isConnected)originals.delete(node);
   }
   const observer=new MutationObserver(()=>{
-    if(!active)return;
-    clearTimeout(scanTimer);scanTimer=setTimeout(scan,80);
+    if(!active || scanTimer)return;
+    // Throttle instead of a resetting debounce: continuously changing party timers
+    // must not starve answer-field discovery.
+    scanTimer=setTimeout(()=>{scanTimer=null;scan();},100);
   });
   observer.observe(document.documentElement,{childList:true,subtree:true,characterData:true,attributes:true,attributeFilter:['disabled','readonly']});
   function stop() {

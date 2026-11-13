@@ -3,12 +3,17 @@
 <h1>Проверка расширения</h1><p id="engine"></p><button id="run">Запустить проверки</button><pre id="results"></pre>
 <div class="ds-prompt">Name something you can see in the sky</div><p id="dynamic">HOW TO PLAY</p>
 <form class="ds-dock"><input class="ds-input" aria-label="Your answer" placeholder="type one answer…" maxlength="256"><button type="submit">DIVE</button></form>
+<section id="puffer-party"><div class="ds-prompt">Name something round</div><input class="ds-input" aria-label="Your answer" placeholder="Your answer" maxlength="256"><button id="party-send">Send</button></section>
+<input id="lobby-name" class="ds-input" autocomplete="nickname" maxlength="16" placeholder="what the ring calls you">
 <script>
 document.getElementById('engine').textContent='Встроенный Translator в тестовом браузере: '+('Translator' in window ? 'доступен' : 'не предоставлен')+'. Ниже тестируется логика с искусственным переводчиком.';
 let submitted=[],received=[];
 const input=document.querySelector('.ds-input');
 input.addEventListener('input',()=>received.push(input.value));
 document.querySelector('form').addEventListener('submit',e=>{e.preventDefault();submitted.push(input.value);});
+const partyInput=document.querySelector('#puffer-party input');
+partyInput.addEventListener('input',()=>received.push(partyInput.value));
+document.getElementById('party-send').addEventListener('click',()=>submitted.push(partyInput.value));
 window.Translator={create:async(options)=>({translate:async(text)=>{
   await new Promise(r=>setTimeout(r,text==='облако'?120:20));
   if(options.sourceLanguage==='ru')return {'облако':'cloud','солнце':'sun','ошибка':''}[text]??'star';
@@ -51,10 +56,19 @@ try{
  const dynamic=document.getElementById('dynamic');
  dynamic.textContent='Daily dive';await wait(180);
  check(dynamic.textContent==='Погружение дня','новая надпись переводится');
+ const partyClone=document.querySelector('#puffer-party [data-kr-ru-draft]');
+ check(!!partyClone && !document.querySelector('#lobby-name').hasAttribute('data-kr-ru-original'),'Puffer Party input найден, поле имени лобби не тронуто');
+ const beforeParty=submitted.length;
+ partyClone.value='облако';partyClone.dispatchEvent(new Event('input',{bubbles:true}));
+ document.getElementById('party-send').click();
+ await wait(220);
+ check(submitted.length===beforeParty+1 && submitted.at(-1)==='cloud','кнопка вне form отправила готовый английский ответ');
+ check(!received.some(x=>/[а-яё]/i.test(x)),'русский черновик Puffer Party не попал в состояние игры');
  panel.getElementById('toggle').click();
  check(dynamic.textContent==='Daily dive','оригинал восстановлен');
  check(!document.querySelector('[data-kr-ru-draft]') && !input.hasAttribute('data-kr-ru-original'),'поле восстановлено при выключении');
  results.textContent+='\nALL TESTS PASSED';
 }catch(e){results.textContent+='\nFAIL '+e.message;}
 };
+if (location.search.includes('autotest')) document.getElementById('run').click();
 </script></html>
